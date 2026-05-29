@@ -1,0 +1,27 @@
+# Secretos — NUNCA subir
+.env
+credentials.json
+token.json
+*.pickle
+
+# Salida generada (archivos pesados)
+output/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/

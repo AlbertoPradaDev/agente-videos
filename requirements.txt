@@ -1,0 +1,51 @@
+# ============================================================
+# AGENTE DE VIDEOS HISTÓRICOS — Dependencias
+# Instalar con: pip install -r requirements.txt
+# ============================================================
+
+# Claude / Anthropic
+anthropic>=0.25.0
+
+# Google Sheets + YouTube
+google-api-python-client>=2.120.0
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+gspread>=6.1.0
+
+# Azure Text to Speech
+azure-cognitiveservices-speech>=1.38.0
+
+# Replicate (imágenes FLUX)
+replicate>=0.25.0
+
+# Telegram notificaciones
+python-telegram-bot>=21.0
+
+# Audio / video (requiere FFmpeg instalado en el sistema)
+ffmpeg-python>=0.2.0
+
+# Whisper (subtítulos automáticos)
+openai-whisper>=20231117
+
+# Manejo de archivos de audio
+pydub>=0.25.1
+
+# Variables de entorno
+python-dotenv>=1.0.0
+
+# Manejo de fechas y zonas horarias
+pytz>=2024.1
+
+# Requests HTTP general
+requests>=2.31.0
+
+# Pillow para manipulación de imágenes (thumbnails)
+Pillow>=10.3.0
+
+# Logging mejorado
+loguru>=0.7.2
+
+# Utilidades
+tqdm>=4.66.0
+retry>=0.9.2
