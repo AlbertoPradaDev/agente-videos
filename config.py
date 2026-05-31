@@ -39,8 +39,9 @@ def crear_directorios():
 # APIs
 # ============================================================
 ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY", "")
-AZURE_SPEECH_KEY        = os.getenv("AZURE_SPEECH_KEY", "")
-AZURE_SPEECH_REGION     = os.getenv("AZURE_SPEECH_REGION", "westeurope")
+ELEVENLABS_API_KEY      = os.getenv("ELEVENLABS_API_KEY", "")
+ELEVENLABS_VOICE_ES     = os.getenv("ELEVENLABS_VOICE_ES", "")
+ELEVENLABS_VOICE_EN     = os.getenv("ELEVENLABS_VOICE_EN", "")
 REPLICATE_API_TOKEN     = os.getenv("REPLICATE_API_TOKEN", "")
 HAILUO_API_KEY          = os.getenv("HAILUO_API_KEY", "")
 TELEGRAM_BOT_TOKEN      = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -72,6 +73,13 @@ VIDEOS_PER_WEEK         = int(os.getenv("VIDEOS_PER_WEEK", "3"))
 ARTLIST_MUSIC_FOLDER    = Path(os.getenv("ARTLIST_MUSIC_FOLDER", str(OUTPUT_DIR / "musica")))
 
 # ============================================================
+# MODELOS DE IA
+# ============================================================
+CLAUDE_MODEL = "claude-sonnet-4-5"   # Cambia a claude-opus-4-5 si quieres máxima calidad
+KLING_MODEL  = "minimax/video-01-live"   # Modelo de animación imagen→video (MiniMax Live2D)
+IMAGENES_A_ANIMAR = 5                # Imágenes animadas por video (apertura, desarrollo x2, clímax, cierre)
+
+# ============================================================
 # PARÁMETROS DE GENERACIÓN
 # ============================================================
 
@@ -80,8 +88,8 @@ SCRIPT_LANGUAGE_PRIMARY     = "es-LA"   # Español Latino
 SCRIPT_LANGUAGE_SECONDARY   = "en"      # Inglés
 TARGET_DURATION_MIN         = 20        # minutos mínimos video largo
 TARGET_DURATION_MAX         = 23        # minutos máximos video largo
-SHORT_DURATION_MIN          = 60        # segundos mínimos corto
-SHORT_DURATION_MAX          = 90        # segundos máximos corto
+SHORT_DURATION_MIN          = 30        # segundos mínimos corto
+SHORT_DURATION_MAX          = 60        # segundos máximos corto
 SHORTS_PER_VIDEO            = 3
 
 # Voz Azure TTS
@@ -106,9 +114,9 @@ SHORT_WIDTH         = 1080
 SHORT_HEIGHT        = 1920
 
 # Música
-MUSIC_VOLUME_BASE   = 0.18     # 18% del volumen total
-MUSIC_VOLUME_CLIMAX = 0.23     # 23% en momentos épicos
-MUSIC_VOLUME_SOFT   = 0.13     # 13% en momentos reflexivos
+MUSIC_VOLUME_BASE   = 0.25     # 25% del volumen total
+MUSIC_VOLUME_CLIMAX = 0.30     # 30% en momentos épicos
+MUSIC_VOLUME_SOFT   = 0.18     # 18% en momentos reflexivos
 
 # ============================================================
 # PROMPTS BASE PARA CLAUDE
@@ -116,11 +124,16 @@ MUSIC_VOLUME_SOFT   = 0.13     # 13% en momentos reflexivos
 
 # Estilo visual para prompts FLUX (añadido a cada prompt de imagen)
 FLUX_STYLE_SUFFIX = (
-    "cinematic hyperrealistic photography, dramatic side lighting, "
-    "epic color palette (deep golds, blood reds, steel grays, midnight blues), "
-    "low angle shot conveying power, film grain, anamorphic lens, "
-    "no text, no watermarks, no modern elements, "
-    "Hollywood epic movie still, 8K, photorealistic"
+    "cinematic hyperrealistic photography, dramatic chiaroscuro lighting, "
+    "historical epic, battle-hardened warriors, fierce expressions, muscles tense, "
+    "swords shields spears axes armor leather iron, blood sweat dust smoke fire, "
+    "epic color palette (deep golds, blood reds, steel grays, midnight blues, amber torchlight), "
+    "low angle shot conveying power and dominance, extreme detail on faces and armor, "
+    "film grain, anamorphic lens flare, shallow depth of field, "
+    "no text, no watermarks, no modern elements, no empty landscapes, "
+    "always include human figures warriors soldiers kings, "
+    "Hollywood epic movie still, 300 movie style, Gladiator movie style, "
+    "Braveheart style, Kingdom of Heaven style, 8K, photorealistic"
 )
 
 # ============================================================
@@ -132,9 +145,8 @@ REQUIRED_VARS = {
 }
 
 OPTIONAL_VARS = {
-    "AZURE_SPEECH_KEY":     AZURE_SPEECH_KEY,
+    "ELEVENLABS_API_KEY":   ELEVENLABS_API_KEY,
     "REPLICATE_API_TOKEN":  REPLICATE_API_TOKEN,
-    "TELEGRAM_BOT_TOKEN":   TELEGRAM_BOT_TOKEN,
     "CHANNEL_NAME":         CHANNEL_NAME,
 }
 
@@ -146,18 +158,15 @@ def validar_config(modulo: str = "base") -> bool:
     requeridas_por_modulo = {
         "base":        ["ANTHROPIC_API_KEY", "GOOGLE_SHEETS_SPREADSHEET_ID"],
         "guion":       ["ANTHROPIC_API_KEY", "GOOGLE_SHEETS_SPREADSHEET_ID"],
-        "voz":         ["AZURE_SPEECH_KEY"],
+        "voz":         ["ELEVENLABS_API_KEY"],
         "imagenes":    ["REPLICATE_API_TOKEN"],
         "publicacion": ["YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET"],
-        "notificacion":["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"],
     }
 
     vars_a_verificar = requeridas_por_modulo.get(modulo, list(REQUIRED_VARS.keys()))
     todos_los_valores = {**REQUIRED_VARS, **OPTIONAL_VARS,
-                         "AZURE_SPEECH_KEY": AZURE_SPEECH_KEY,
+                         "ELEVENLABS_API_KEY": ELEVENLABS_API_KEY,
                          "REPLICATE_API_TOKEN": REPLICATE_API_TOKEN,
-                         "TELEGRAM_BOT_TOKEN": TELEGRAM_BOT_TOKEN,
-                         "TELEGRAM_CHAT_ID": TELEGRAM_CHAT_ID,
                          "YOUTUBE_CLIENT_ID": YOUTUBE_CLIENT_ID,
                          "YOUTUBE_CLIENT_SECRET": YOUTUBE_CLIENT_SECRET}
 
