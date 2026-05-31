@@ -25,3 +25,5 @@ build/
 # IDEs
 .vscode/
 .idea/
+youtube_credentials.json
+youtube_token.pickle
