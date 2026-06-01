@@ -106,7 +106,7 @@ Flujo continuo sin cortes visibles. SOLO el guión narrativo."""
     logger.info(f"✓ Texto del guión generado ({len(guion_texto)} caracteres)")
 
     # --- LLAMADA 2: Metadatos y prompts visuales ---
-    prompt_meta = f"""Basándote en este guión histórico, genera los metadatos para YouTube y los prompts visuales.
+    prompt_meta = f"""Basándote en este guión histórico, genera los metadatos para YouTube y 15 prompts visuales para todo el video.
 
 GUIÓN:
 {guion_texto[:4000]}...
@@ -119,40 +119,49 @@ RESPONDE ÚNICAMENTE con un JSON válido:
   "capitulos": [
     {{
       "numero": 1,
-      "nombre": "nombre del capítulo",
-      "prompts_visuales": [
+      "nombre": "Video completo",
+      "prompts": [
         "prompt 1",
         "prompt 2",
         "prompt 3",
         "prompt 4",
         "prompt 5",
         "prompt 6",
-        "prompt 7"
+        "prompt 7",
+        "prompt 8",
+        "prompt 9",
+        "prompt 10",
+        "prompt 11",
+        "prompt 12",
+        "prompt 13",
+        "prompt 14",
+        "prompt 15"
       ]
     }}
   ]
 }}
 
-REGLAS ESTRICTAS PARA LOS PROMPTS VISUALES:
-Cada prompt es en INGLÉS y describe una escena fotorrealista e histórica para una IA generadora de imágenes.
+REGLAS ESTRICTAS PARA LOS 15 PROMPTS VISUALES:
+- Cada prompt en INGLÉS describe una escena histórica fotorrealista para IA generadora de imágenes
+- Los 15 prompts cubren el arco narrativo completo del video (inicio, desarrollo, clímax, cierre)
+- Rota entre estos tipos de escena para máxima variedad:
+  1. LÍDER/GUERRERO: primer plano épico del protagonista. Cara, armadura, expresión determinada. Casco, espada, escudo.
+  2. FORMACIÓN MILITAR: ejército en formación de combate. Lanzas, escudos, estandartes. Perspectiva frontal o aérea.
+  3. SÍMBOLO/OBJETO: arma, estandarte, corona, mapa, pergamino o reliquia icónica. Iluminación dramática.
+  4. MOMENTO HISTÓRICO: escena del evento clave — coronación, firma de tratado, rendición, discurso. Emoción y poder.
+  5. FORTALEZA/ARQUITECTURA: castillo, templo, ciudadela o muralla con figuras humanas en primer plano.
+  6. PAISAJE ÉPICO: campo de batalla, ciudad asediada, puerto con barcos de guerra. Escala épica con personas visibles.
+  7. RETRATO GRUPAL: consejo de guerra, grupo de guerreros, hermandad de caballeros. Tensión y camaradería.
 
-TIPOS DE ESCENA — rota entre todos para máxima variedad:
-1. PERSONAJE PRINCIPAL: primer plano épico del líder/guerrero/rey protagonista del capítulo. Cara, armadura, expresión feroz o determinada. Cicatrices, barba, casco. Muy detallado.
-2. COMBATE/BATALLA: soldados chocando en combate cuerpo a cuerpo. Lanzas, espadas, escudos, sangre, polvo, caos. Ángulo bajo dramático.
-3. SÍMBOLO/OBJETO ICÓNICO: el arma, estandarte, corona, mapa, pergamino, reliquia o símbolo que define el capítulo. Primer plano con iluminación dramática.
-4. EJÉRCITO/FORMACIÓN: miles de guerreros en formación lista para atacar. Perspectiva aérea o frontal masiva. Banderas, armas en alto.
-5. MOMENTO HISTÓRICO: la escena exacta del evento clave narrado — traición, coronación, firma, ejecución, sacrificio. Captura la emoción.
-6. PAISAJE ÉPICO CON ACCIÓN: campo de batalla, fortaleza asediada, ciudad en llamas, barcos de guerra. Escala épica con personas visibles.
-7. CONSECUENCIA/EMOCIÓN: supervivientes entre cadáveres, un rey mirando su reino destruido, un guerrero solitario. Silencio y peso dramático.
-
-PROHIBICIONES ABSOLUTAS:
+PROHIBICIONES ABSOLUTAS (evitan el filtro de contenido de la IA):
+- NO uses palabras: blood, gore, torture, ritual, sacrifice, naked, nude, dead bodies, corpses
 - NO paisajes vacíos sin personas
-- NO monumentos o esculturas estáticas sin contexto humano
+- NO monumentos o esculturas sin figuras humanas activas
 - NO repetir el mismo tipo de escena dos veces seguidas
 - NO texto, watermarks ni elementos modernos
-- SIEMPRE incluir personas, guerreros, o figuras humanas en cada prompt
+- SIEMPRE incluir figuras humanas activas en cada escena
 
-Varía razas, épocas, culturas, climas (desierto, nieve, jungla, mar) según el contexto histórico del guión."""
+Varía climas y entornos: desierto, nieve, jungla, mar, montaña según el contexto del guión."""
 
     respuesta2 = cliente.messages.create(
         model="claude-sonnet-4-5",
@@ -281,10 +290,17 @@ def generar_guion_completo(id_video: int, tema: dict):
         datos_es = generar_guion_largo(tema)
 
         # 2. Preparar prompts visuales como JSON string
-        prompts = [
-            {"capitulo": c["numero"], "nombre": c["nombre"], "prompt": c["prompt_visual"]}
-            for c in datos_es["capitulos"]
-        ]
+        prompts = []
+        for c in datos_es["capitulos"]:
+            # Compatibilidad con ambos formatos que puede devolver Claude
+            visuales = c.get("prompts_visuales") or c.get("prompt_visual") or []
+            if isinstance(visuales, str):
+                visuales = [visuales]
+            prompts.append({
+                "capitulo": c["numero"],
+                "nombre": c["nombre"],
+                "prompts": visuales,
+            })
 
         # 3. Guardar en Google Sheets (guion_en queda vacío para uso futuro)
         guardar_produccion(id_video, {

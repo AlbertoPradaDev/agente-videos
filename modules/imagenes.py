@@ -158,6 +158,7 @@ def generar_imagenes(id_video: int):
     """
     Genera todas las imágenes del video usando los prompts visuales
     guardados en Google Sheets por el módulo de guión.
+    Soporta tanto lista plana de prompts como estructura por capítulos.
     """
     produccion = obtener_produccion(id_video)
     if not produccion:
@@ -167,29 +168,52 @@ def generar_imagenes(id_video: int):
     if not prompts_json:
         raise ValueError(f"No hay prompts visuales para el video {id_video}. Ejecuta primero el módulo de guión.")
 
-    prompts = json.loads(prompts_json)
-    logger.info(f"Generando imágenes para {len(prompts)} capítulos...")
+    datos = json.loads(prompts_json)
+
+    # Extraer lista plana de prompts (soporta estructura por capítulos o lista directa)
+    todos_los_prompts = []
+    if isinstance(datos, list):
+        for item in datos:
+            if isinstance(item, str):
+                # Lista plana de strings
+                todos_los_prompts.append(item)
+            elif isinstance(item, dict):
+                # Estructura por capítulos
+                prompts_cap = item.get("prompts") or item.get("prompts_visuales") or []
+                if not prompts_cap:
+                    prompt_unico = item.get("prompt_visual", item.get("prompt", ""))
+                    if prompt_unico:
+                        prompts_cap = [prompt_unico]
+                todos_los_prompts.extend(prompts_cap)
+
+    if not todos_los_prompts:
+        raise ValueError(f"No se pudieron extraer prompts para el video {id_video}")
+
+    logger.info(f"Generando {len(todos_los_prompts)} imágenes para video {id_video}...")
+
+    carpeta = config.PATHS["imagenes"] / f"video_{id_video}" / "capitulo_01"
+    carpeta.mkdir(parents=True, exist_ok=True)
 
     todas_las_imagenes = []
+    for idx, prompt in enumerate(todos_los_prompts):
+        ruta = carpeta / f"img_{idx + 1:02d}.jpg"
 
-    for capitulo in prompts:
-        numero = capitulo.get("capitulo", capitulo.get("numero", 0))
-        nombre = capitulo.get("nombre", f"Capítulo {numero}")
-
-        # Soporta tanto lista de prompts (nuevo) como prompt único (legado)
-        prompts_cap = capitulo.get("prompts_visuales", [])
-        if not prompts_cap:
-            prompt_unico = capitulo.get("prompt_visual", capitulo.get("prompt", ""))
-            if prompt_unico:
-                prompts_cap = [prompt_unico]
-
-        if not prompts_cap:
-            logger.warning(f"Capítulo {numero} sin prompts visuales, saltando")
+        if ruta.exists():
+            logger.info(f"  Imagen {idx + 1} ya existe, saltando")
+            todas_las_imagenes.append(ruta)
             continue
 
-        logger.info(f"Capítulo {numero}: {nombre} ({len(prompts_cap)} escenas)")
-        rutas = generar_imagenes_capitulo(id_video, numero, nombre, prompts_cap)
-        todas_las_imagenes.extend(rutas)
+        exito = generar_imagen(prompt, ruta)
+        if exito:
+            todas_las_imagenes.append(ruta)
+        else:
+            logger.info("  Esperando 15s por rate limit...")
+            time.sleep(15)
+            exito = generar_imagen(prompt, ruta)
+            if exito:
+                todas_las_imagenes.append(ruta)
+
+        time.sleep(8)
 
     # Seleccionar thumbnail
     ruta_thumb = seleccionar_thumbnail(id_video, todas_las_imagenes)

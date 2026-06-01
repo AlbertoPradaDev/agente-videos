@@ -126,8 +126,8 @@ MUSIC_VOLUME_SOFT   = 0.18     # 18% en momentos reflexivos
 FLUX_STYLE_SUFFIX = (
     "cinematic hyperrealistic photography, dramatic chiaroscuro lighting, "
     "historical epic, battle-hardened warriors, fierce expressions, muscles tense, "
-    "swords shields spears axes armor leather iron, blood sweat dust smoke fire, "
-    "epic color palette (deep golds, blood reds, steel grays, midnight blues, amber torchlight), "
+    "swords shields spears axes armor leather iron, dust smoke fire, "
+    "epic color palette (deep golds, steel grays, midnight blues, amber torchlight), "
     "low angle shot conveying power and dominance, extreme detail on faces and armor, "
     "film grain, anamorphic lens flare, shallow depth of field, "
     "no text, no watermarks, no modern elements, no empty landscapes, "
