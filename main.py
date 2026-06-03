@@ -113,15 +113,15 @@ def run_pipeline(id_video: int = None, desde: str = None):
                 generar_imagenes(id_video)
                 logger.success("✓ Imágenes completadas")
 
-        # ── MÓDULO 6: Animación ───────────────────────────────────
-        if modulo_pendiente(estado_actual, "animacion"):
-            if not config.REPLICATE_API_TOKEN:
-                logger.warning("⚠️  REPLICATE_API_TOKEN no configurado — saltando animación")
-            else:
-                logger.info("🎬  [Módulo 6] Animando imágenes con MiniMax...")
-                from modules.animacion import generar_animaciones
-                generar_animaciones(id_video)
-                logger.success("✓ Animaciones completadas")
+        # ── MÓDULO 6: Animación ─── DESACTIVADO (alto costo) ─────
+        # if modulo_pendiente(estado_actual, "animacion"):
+        #     if not config.REPLICATE_API_TOKEN:
+        #         logger.warning("⚠️  REPLICATE_API_TOKEN no configurado — saltando animación")
+        #     else:
+        #         logger.info("🎬  [Módulo 6] Animando imágenes con MiniMax...")
+        #         from modules.animacion import generar_animaciones
+        #         generar_animaciones(id_video)
+        #         logger.success("✓ Animaciones completadas")
 
         # ── MÓDULO 7: Edición ─────────────────────────────────────
         if modulo_pendiente(estado_actual, "edicion"):

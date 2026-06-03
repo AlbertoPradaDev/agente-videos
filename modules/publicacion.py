@@ -14,6 +14,8 @@ Uso directo para testear:
 import sys
 import json
 import argparse
+import socket
+import time
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -33,6 +35,40 @@ import pickle
 import os
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+MAX_REINTENTOS = 5
+
+
+def _subir_con_reintentos(request, descripcion: str) -> dict:
+    """Ejecuta una subida resumable con reintentos automáticos ante timeouts y errores de red."""
+    from googleapiclient.errors import HttpError
+
+    respuesta = None
+    reintentos = 0
+    while respuesta is None:
+        try:
+            status, respuesta = request.next_chunk()
+            if status:
+                progreso = int(status.progress() * 100)
+                logger.info(f"  Subiendo {descripcion}... {progreso}%")
+            reintentos = 0  # reset al tener éxito
+        except (TimeoutError, socket.timeout, OSError, ConnectionResetError) as e:
+            reintentos += 1
+            if reintentos > MAX_REINTENTOS:
+                raise RuntimeError(f"Timeout tras {MAX_REINTENTOS} reintentos: {e}")
+            espera = min(60, 5 * reintentos)
+            logger.warning(f"  Timeout, reintentando en {espera}s ({reintentos}/{MAX_REINTENTOS})...")
+            time.sleep(espera)
+        except HttpError as e:
+            if e.resp.status in (500, 502, 503, 504):
+                reintentos += 1
+                if reintentos > MAX_REINTENTOS:
+                    raise
+                espera = min(60, 5 * reintentos)
+                logger.warning(f"  Error HTTP {e.resp.status}, reintentando en {espera}s...")
+                time.sleep(espera)
+            else:
+                raise
+    return respuesta
 TOKEN_FILE = Path(__file__).parent.parent / "youtube_token.pickle"
 CREDENTIALS_FILE = Path(__file__).parent.parent / "youtube_credentials.json"
 
@@ -158,14 +194,7 @@ def subir_video_largo(id_video: int, youtube) -> str:
         media_body=media
     )
 
-    # Subida con progreso
-    response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            progreso = int(status.progress() * 100)
-            logger.info(f"  Subiendo... {progreso}%")
-
+    response = _subir_con_reintentos(request, titulo[:40])
     video_id = response["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
     logger.success(f"✅ Video largo subido: {url}")
@@ -241,13 +270,7 @@ def subir_cortos(id_video: int, youtube):
             media_body=media
         )
 
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                progreso = int(status.progress() * 100)
-                logger.info(f"  Subiendo corto {numero}... {progreso}%")
-
+        response = _subir_con_reintentos(request, f"corto {numero}")
         video_id = response["id"]
         url = f"https://www.youtube.com/shorts/{video_id}"
         logger.success(f"✅ Corto {numero} subido: {url}")

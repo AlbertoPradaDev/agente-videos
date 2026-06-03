@@ -275,21 +275,30 @@ def generar_voces(id_video: int):
     if not produccion:
         raise ValueError(f"Video {id_video} no encontrado en Google Sheets")
 
-    if produccion.get("ruta_audio_es") and Path(produccion["ruta_audio_es"]).exists():
-        logger.info(f"Video {id_video}: audios ya existen, saltando módulo voz")
-        return
-
     try:
-        ruta_es = generar_audio_largo(id_video, produccion)
+        # Audio largo — verificar independientemente
+        if produccion.get("ruta_audio_es") and Path(produccion["ruta_audio_es"]).exists():
+            logger.info(f"Video {id_video}: audio largo ya existe, saltando")
+        else:
+            ruta_es = generar_audio_largo(id_video, produccion)
+            guardar_produccion(id_video, {
+                "ruta_audio_es":     ruta_es,
+                "estado_produccion": "voz",
+            })
 
-        guardar_produccion(id_video, {
-            "ruta_audio_es":     ruta_es,
-            "estado_produccion": "voz",
-        })
-
+        # Audios cortos — verificar independientemente
         cortos = obtener_cortos(id_video)
         if cortos:
-            generar_audios_cortos(id_video, cortos)
+            carpeta_cortos = config.PATHS["audio"] / f"video_{id_video}" / "cortos"
+            cortos_pendientes = [
+                c for c in cortos
+                if not (carpeta_cortos / f"corto_{c.get('numero_corto', c.get('numero', '?'))}_es.mp3").exists()
+            ]
+            if cortos_pendientes:
+                logger.info(f"Generando audios de {len(cortos_pendientes)} cortos pendientes...")
+                generar_audios_cortos(id_video, cortos_pendientes)
+            else:
+                logger.info(f"Video {id_video}: audios de cortos ya existen, saltando")
 
         logger.success(f"✅ Módulo 4 completado para video {id_video}")
 

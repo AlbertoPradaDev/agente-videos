@@ -5,7 +5,7 @@ Módulo 2: Genera el guión largo (20-23 min) en ES-LA + EN,
            prompts visuales por capítulo, título SEO, descripción y tags.
 
 Módulo 3: Extrae los 3 momentos más impactantes del guión largo
-           y genera 3 guiones cortos de 60-90 segundos.
+           y genera 3 guiones cortos de 30-60 segundos.
 
 Uso directo para testear:
   python modules/guion.py --id 1
@@ -106,7 +106,7 @@ Flujo continuo sin cortes visibles. SOLO el guión narrativo."""
     logger.info(f"✓ Texto del guión generado ({len(guion_texto)} caracteres)")
 
     # --- LLAMADA 2: Metadatos y prompts visuales ---
-    prompt_meta = f"""Basándote en este guión histórico, genera los metadatos para YouTube y 15 prompts visuales para todo el video.
+    prompt_meta = f"""Basándote en este guión histórico, genera los metadatos para YouTube y 6 prompts visuales para todo el video.
 
 GUIÓN:
 {guion_texto[:4000]}...
@@ -126,16 +126,7 @@ RESPONDE ÚNICAMENTE con un JSON válido:
         "prompt 3",
         "prompt 4",
         "prompt 5",
-        "prompt 6",
-        "prompt 7",
-        "prompt 8",
-        "prompt 9",
-        "prompt 10",
-        "prompt 11",
-        "prompt 12",
-        "prompt 13",
-        "prompt 14",
-        "prompt 15"
+        "prompt 6"
       ]
     }}
   ]
@@ -143,7 +134,7 @@ RESPONDE ÚNICAMENTE con un JSON válido:
 
 REGLAS ESTRICTAS PARA LOS 15 PROMPTS VISUALES:
 - Cada prompt en INGLÉS describe una escena histórica fotorrealista para IA generadora de imágenes
-- Los 15 prompts cubren el arco narrativo completo del video (inicio, desarrollo, clímax, cierre)
+- Los 6 prompts cubren el arco narrativo completo del video (inicio, desarrollo, clímax, cierre)
 - Rota entre estos tipos de escena para máxima variedad:
   1. LÍDER/GUERRERO: primer plano épico del protagonista. Cara, armadura, expresión determinada. Casco, espada, escudo.
   2. FORMACIÓN MILITAR: ejército en formación de combate. Lanzas, escudos, estandartes. Perspectiva frontal o aérea.
@@ -271,6 +262,80 @@ RESPONDE ÚNICAMENTE con un JSON válido:
 
 
 # ============================================================
+# RECUPERACIÓN DE PROMPTS VACÍOS
+# ============================================================
+
+def _regenerar_prompts(id_video: int, guion_texto: str, titulo: str):
+    """
+    Usa el guión ya almacenado para regenerar solo los prompts visuales y
+    actualizar prompts_visuales en Google Sheets. No toca el guión ni el audio.
+    """
+    logger.info("Regenerando prompts visuales desde guión existente...")
+
+    prompt_meta = f"""Basándote en este guión histórico, genera los metadatos para YouTube y 6 prompts visuales para todo el video.
+
+GUIÓN:
+{guion_texto[:4000]}...
+
+RESPONDE ÚNICAMENTE con un JSON válido:
+{{
+  "titulo_yt": "título SEO optimizado, máximo 60 caracteres, en español",
+  "descripcion_yt": "descripción YouTube 200-300 palabras con keywords hispanohablantes y timestamps",
+  "tags_yt": "tag1,tag2,tag3,tag4,tag5,tag6,tag7,tag8,tag9,tag10",
+  "capitulos": [
+    {{
+      "numero": 1,
+      "nombre": "Video completo",
+      "prompts": [
+        "prompt 1",
+        "prompt 2",
+        "prompt 3",
+        "prompt 4",
+        "prompt 5",
+        "prompt 6"
+      ]
+    }}
+  ]
+}}
+
+REGLAS ESTRICTAS PARA LOS 6 PROMPTS VISUALES:
+- Cada prompt en INGLÉS describe una escena histórica fotorrealista para IA generadora de imágenes
+- Los 6 prompts cubren el arco narrativo completo del video (inicio, desarrollo, clímax, cierre)
+- PROHIBICIONES: NO uses blood, gore, torture, sacrifice, naked, dead bodies. SIEMPRE incluir figuras humanas activas."""
+
+    respuesta = cliente.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=3000,
+        messages=[{"role": "user", "content": prompt_meta}],
+    )
+
+    texto = respuesta.content[0].text.strip()
+    if texto.startswith("```"):
+        texto = texto.split("```")[1]
+        if texto.startswith("json"):
+            texto = texto[4:]
+        texto = texto.strip()
+
+    meta = json.loads(texto)
+
+    prompts = []
+    for c in meta["capitulos"]:
+        visuales = c.get("prompts") or c.get("prompts_visuales") or c.get("prompt_visual") or []
+        if isinstance(visuales, str):
+            visuales = [visuales]
+        prompts.append({
+            "capitulo": c["numero"],
+            "nombre": c["nombre"],
+            "prompts": visuales,
+        })
+
+    guardar_produccion(id_video, {
+        "prompts_visuales": json.dumps(prompts, ensure_ascii=False),
+    })
+    logger.success(f"✅ Prompts regenerados para video {id_video}: {sum(len(p['prompts']) for p in prompts)} imágenes")
+
+
+# ============================================================
 # ORQUESTADOR DEL MÓDULO
 # ============================================================
 
@@ -282,7 +347,28 @@ def generar_guion_completo(id_video: int, tema: dict):
     # Verificar si ya existe guión (reanudación)
     produccion = obtener_produccion(id_video)
     if produccion and produccion.get("guion_es"):
-        logger.info(f"Video {id_video}: guión ya existe, saltando generación")
+        # Verificar que los prompts existan Y tengan contenido real (no listas vacías)
+        prompts_validos = False
+        prompts_str = produccion.get("prompts_visuales", "")
+        if prompts_str:
+            try:
+                datos = json.loads(prompts_str)
+                prompts_validos = any(
+                    item.get("prompts")
+                    for item in datos
+                    if isinstance(item, dict)
+                )
+            except Exception:
+                pass
+
+        if prompts_validos:
+            logger.info(f"Video {id_video}: guión y prompts ya existen, saltando generación")
+            return
+        # Guión existe pero prompts vacíos o inválidos — regenerar solo metadatos
+        logger.info(f"Video {id_video}: guión existe pero prompts vacíos, regenerando metadatos...")
+        guion_texto = produccion["guion_es"]
+        titulo = produccion.get("titulo_yt", tema["tema"])
+        _regenerar_prompts(id_video, guion_texto, titulo)
         return
 
     try:
@@ -293,7 +379,7 @@ def generar_guion_completo(id_video: int, tema: dict):
         prompts = []
         for c in datos_es["capitulos"]:
             # Compatibilidad con ambos formatos que puede devolver Claude
-            visuales = c.get("prompts_visuales") or c.get("prompt_visual") or []
+            visuales = c.get("prompts") or c.get("prompts_visuales") or c.get("prompt_visual") or []
             if isinstance(visuales, str):
                 visuales = [visuales]
             prompts.append({

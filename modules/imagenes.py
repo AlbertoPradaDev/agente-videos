@@ -168,6 +168,7 @@ def generar_imagenes(id_video: int):
     if not prompts_json:
         raise ValueError(f"No hay prompts visuales para el video {id_video}. Ejecuta primero el módulo de guión.")
 
+    logger.info(f"prompts_visuales raw: {prompts_json[:300]}")
     datos = json.loads(prompts_json)
 
     # Extraer lista plana de prompts (soporta estructura por capítulos o lista directa)

@@ -130,7 +130,7 @@ def crear_video_largo(id_video: int) -> Path:
     logger.info(f"Total imágenes: {len(imagenes)}")
 
     # 3. Calcular cuántas imágenes necesitamos para cubrir toda la duración
-    SEGUNDOS_POR_IMAGEN = 10  # Cada imagen dura 10 segundos en videos largos
+    SEGUNDOS_POR_IMAGEN = 60  # Cada imagen dura 60 segundos en videos largos
     total_clips_necesarios = int(duracion_total / SEGUNDOS_POR_IMAGEN) + 1
 
     # Ciclar imágenes si no hay suficientes
@@ -418,7 +418,7 @@ def crear_corto(id_video: int, numero_corto: int, datos_corto: dict) -> Path:
         "-i", str(track_musica),
         "-filter_complex",
         f"[2:a]volume={config.MUSIC_VOLUME_BASE},aloop=loop=-1:size=2147483647[musica];"
-        f"[1:a][musica]amix=inputs=2:duration=first:weights=1 {config.MUSIC_VOLUME_BASE}[audio_final]",
+        f"[1:a][musica]amix=inputs=2:duration=first[audio_final]",
         "-map", "0:v",
         "-map", "[audio_final]",
         "-vf", subtitulos_filter,
@@ -456,7 +456,7 @@ def _generar_subtitulos(ruta_audio: Path, ruta_ass: Path):
             # FontSize 36 — bien legible en móvil
             # Alignment 5 = centro horizontal, centro vertical (mitad de pantalla)
             # Outline 4, Shadow 2 para máxima legibilidad sobre cualquier imagen
-            "Style: Default,Arial,42,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,4,2,5,60,60,960,1\n\n"
+            "Style: Default,Arial,52,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,4,2,5,60,60,960,1\n\n"
             "[Events]\n"
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
         )

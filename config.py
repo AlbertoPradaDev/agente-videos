@@ -86,8 +86,6 @@ IMAGENES_A_ANIMAR = 5                # Imágenes animadas por video (apertura, d
 # Guión
 SCRIPT_LANGUAGE_PRIMARY     = "es-LA"   # Español Latino
 SCRIPT_LANGUAGE_SECONDARY   = "en"      # Inglés
-TARGET_DURATION_MIN         = 20        # minutos mínimos video largo
-TARGET_DURATION_MAX         = 23        # minutos máximos video largo
 SHORT_DURATION_MIN          = 30        # segundos mínimos corto
 SHORT_DURATION_MAX          = 60        # segundos máximos corto
 SHORTS_PER_VIDEO            = 3
@@ -114,9 +112,9 @@ SHORT_WIDTH         = 1080
 SHORT_HEIGHT        = 1920
 
 # Música
-MUSIC_VOLUME_BASE   = 0.25     # 25% del volumen total
-MUSIC_VOLUME_CLIMAX = 0.30     # 30% en momentos épicos
-MUSIC_VOLUME_SOFT   = 0.18     # 18% en momentos reflexivos
+MUSIC_VOLUME_BASE   = 0.10     # 10% del volumen total
+MUSIC_VOLUME_CLIMAX = 0.10     # 10% en momentos épicos
+MUSIC_VOLUME_SOFT   = 0.10     # 10% en momentos reflexivos
 
 # ============================================================
 # PROMPTS BASE PARA CLAUDE
