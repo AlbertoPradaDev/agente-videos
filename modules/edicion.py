@@ -203,33 +203,20 @@ def crear_video_largo(id_video: int) -> Path:
         "-c", "copy", str(ruta_video_sin_audio)
     ], "Concatenando clips")
 
-    # 6. Preparar música de fondo
-    # Usamos un track épico como base y batalla para el clímax
-    track_base = obtener_track("epico")
-    track_climax = obtener_track("batalla")
-
-    # Mezclar audio: voz al 100% + música al 18% con fade
-    # batalla_climax entra desde el segundo 25 del track con fade in de 3s
-    # Inputs: 0=video, 1=voz, 2=musica (en loop)
-    # Mezcla simple: voz al 100% + música al 18%
-    filter_audio = (
-        f"[1:a]volume=1.0[voz];"
-        f"[2:a]volume={config.MUSIC_VOLUME_BASE},aloop=loop=-1:size=2147483647[musica];"
-        f"[voz][musica]amix=inputs=2:duration=first[audio_final]"
-    )
-
+    # 6. Mezclar voz con fade out suave al final (sin música — evita copyright)
+    fade_inicio = max(0, duracion_total - 2)
     run_ffmpeg([
         "-i", str(ruta_video_sin_audio),
         "-i", str(ruta_audio),
-        "-i", str(track_base),
-        "-filter_complex", filter_audio,
+        "-filter_complex",
+        f"[1:a]afade=t=out:st={fade_inicio:.2f}:d=2[audio_final]",
         "-map", "0:v",
         "-map", "[audio_final]",
         "-c:v", "copy",
         "-c:a", "aac", "-b:a", "192k",
         "-t", str(duracion_total),
         str(ruta_final)
-    ], "Mezclando audio con música")
+    ], "Mezclando audio de voz con fade out")
 
     # Limpiar archivos temporales
     import shutil
@@ -412,13 +399,15 @@ def crear_corto(id_video: int, numero_corto: int, datos_corto: dict) -> Path:
     ruta_ass_escaped = str(ruta_ass).replace(":", "\\:")
     subtitulos_filter = f"subtitles={ruta_ass_escaped}"
 
+    fade_inicio_corto = max(0, duracion - 2)
     run_ffmpeg([
         "-i", str(ruta_video_sin_audio),
         "-i", str(ruta_audio),
         "-i", str(track_musica),
         "-filter_complex",
         f"[2:a]volume={config.MUSIC_VOLUME_BASE},aloop=loop=-1:size=2147483647[musica];"
-        f"[1:a][musica]amix=inputs=2:duration=first[audio_final]",
+        f"[1:a][musica]amix=inputs=2:duration=first[mezcla];"
+        f"[mezcla]afade=t=out:st={fade_inicio_corto:.2f}:d=2[audio_final]",
         "-map", "0:v",
         "-map", "[audio_final]",
         "-vf", subtitulos_filter,

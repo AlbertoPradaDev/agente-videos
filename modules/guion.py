@@ -67,6 +67,8 @@ REGLAS DE ORO — sin excepción:
 
 6. RITMO CINEMATOGRÁFICO. Alterna entre escenas de acción brutal (frases cortas, explosivas) y momentos de reflexión profunda (frases largas, poéticas). Como una película de acción con alma.
 
+LÍMITE ABSOLUTO DE LONGITUD: El guión completo NO debe superar 8.500 caracteres. Un guión de 12 minutos narrado en voz tiene entre 7.500 y 8.500 caracteres. Cuando llegues a 8.000 caracteres ve cerrando el guión con el cierre final. Si lo excedes el video durará más de 12 minutos y será rechazado.
+
 ESTRUCTURA (10-12 minutos de narración):
 
 APERTURA (0-1 min): Escena in medias res. Empieza en el momento más tenso. Sin contexto previo. El espectador debe estar confundido y fascinado al mismo tiempo.
@@ -99,7 +101,7 @@ Flujo continuo sin cortes visibles. SOLO el guión narrativo."""
 
     respuesta1 = cliente.messages.create(
         model="claude-sonnet-4-5",
-        max_tokens=8000,
+        max_tokens=4000,
         messages=[{"role": "user", "content": prompt_texto}],
     )
     guion_texto = respuesta1.content[0].text.strip()
