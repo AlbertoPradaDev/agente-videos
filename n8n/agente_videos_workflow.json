@@ -1,0 +1,110 @@
+{
+  "name": "Archivos Oscuros - Pipeline (etapas)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a0000000-0000-4000-8000-000000000001",
+      "name": "Ejecutar ahora",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-40, 200]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1,3,5"
+            }
+          ]
+        }
+      },
+      "id": "a0000000-0000-4000-8000-000000000002",
+      "name": "Lun/Mie/Vie 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-40, 420]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Etapa 1 — GUION (Claude): toma el siguiente tema pendiente de Sheets,\n// genera el guion + cortos y crea la fila de produccion. Emite VIDEO_ID.\nconst { execSync } = require('child_process');\nconst SCRIPT = '/Users/cex/Documents/Workspace/tools/agente_videos/run_pipeline.sh';\nconst opts = { timeout: 1800000, maxBuffer: 67108864, encoding: 'utf8' };\nlet out;\ntry {\n  out = execSync(`${SCRIPT} --solo guion`, opts);\n} catch (e) {\n  const log = ((e.stdout || '') + (e.stderr || '')).slice(-4000);\n  throw new Error('Fallo la etapa GUION.\\n' + log);\n}\nconst m = out.match(/VIDEO_ID=(\\d+)/);\nif (!m) throw new Error('No se pudo resolver VIDEO_ID (puede que no haya temas pendientes).\\n' + out.slice(-3000));\nreturn [{ json: { video_id: Number(m[1]), etapa: 'guion', ok: true, log: out.slice(-3000) } }];"
+      },
+      "id": "a0000000-0000-4000-8000-000000000003",
+      "name": "Guion (Claude)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Etapa 2 — VOZ (ElevenLabs)\nconst { execSync } = require('child_process');\nconst SCRIPT = '/Users/cex/Documents/Workspace/tools/agente_videos/run_pipeline.sh';\nconst id = $input.first().json.video_id;\nif (!id) throw new Error('No llego video_id del nodo anterior.');\nconst opts = { timeout: 1800000, maxBuffer: 67108864, encoding: 'utf8' };\nlet out;\ntry {\n  out = execSync(`${SCRIPT} --id ${id} --solo voz`, opts);\n} catch (e) {\n  const log = ((e.stdout || '') + (e.stderr || '')).slice(-4000);\n  throw new Error('Fallo la etapa VOZ (video ' + id + ').\\n' + log);\n}\nreturn [{ json: { video_id: id, etapa: 'voz', ok: true, log: out.slice(-3000) } }];"
+      },
+      "id": "a0000000-0000-4000-8000-000000000004",
+      "name": "Voz (ElevenLabs)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Etapa 3 — IMAGENES (Replicate FLUX)\nconst { execSync } = require('child_process');\nconst SCRIPT = '/Users/cex/Documents/Workspace/tools/agente_videos/run_pipeline.sh';\nconst id = $input.first().json.video_id;\nif (!id) throw new Error('No llego video_id del nodo anterior.');\nconst opts = { timeout: 1800000, maxBuffer: 67108864, encoding: 'utf8' };\nlet out;\ntry {\n  out = execSync(`${SCRIPT} --id ${id} --solo imagenes`, opts);\n} catch (e) {\n  const log = ((e.stdout || '') + (e.stderr || '')).slice(-4000);\n  throw new Error('Fallo la etapa IMAGENES (video ' + id + ').\\n' + log);\n}\nreturn [{ json: { video_id: id, etapa: 'imagenes', ok: true, log: out.slice(-3000) } }];"
+      },
+      "id": "a0000000-0000-4000-8000-000000000005",
+      "name": "Imagenes (FLUX)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Etapa 4 — EDICION (FFmpeg + Whisper): video largo + cortos con subtitulos\nconst { execSync } = require('child_process');\nconst SCRIPT = '/Users/cex/Documents/Workspace/tools/agente_videos/run_pipeline.sh';\nconst id = $input.first().json.video_id;\nif (!id) throw new Error('No llego video_id del nodo anterior.');\nconst opts = { timeout: 1800000, maxBuffer: 67108864, encoding: 'utf8' };\nlet out;\ntry {\n  out = execSync(`${SCRIPT} --id ${id} --solo edicion`, opts);\n} catch (e) {\n  const log = ((e.stdout || '') + (e.stderr || '')).slice(-4000);\n  throw new Error('Fallo la etapa EDICION (video ' + id + ').\\n' + log);\n}\nreturn [{ json: { video_id: id, etapa: 'edicion', ok: true, log: out.slice(-3000) } }];"
+      },
+      "id": "a0000000-0000-4000-8000-000000000006",
+      "name": "Edicion (FFmpeg+Whisper)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Etapa 5 — PUBLICACION (YouTube): programa largo + 3 cortos\nconst { execSync } = require('child_process');\nconst SCRIPT = '/Users/cex/Documents/Workspace/tools/agente_videos/run_pipeline.sh';\nconst id = $input.first().json.video_id;\nif (!id) throw new Error('No llego video_id del nodo anterior.');\nconst opts = { timeout: 1800000, maxBuffer: 67108864, encoding: 'utf8' };\nlet out;\ntry {\n  out = execSync(`${SCRIPT} --id ${id} --solo publicacion`, opts);\n} catch (e) {\n  const log = ((e.stdout || '') + (e.stderr || '')).slice(-4000);\n  throw new Error('Fallo la etapa PUBLICACION (video ' + id + ').\\n' + log);\n}\nreturn [{ json: { video_id: id, etapa: 'publicacion', ok: true, log: out.slice(-3000) } }];"
+      },
+      "id": "a0000000-0000-4000-8000-000000000007",
+      "name": "Publicacion (YouTube)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 300]
+    }
+  ],
+  "connections": {
+    "Ejecutar ahora": {
+      "main": [[{ "node": "Guion (Claude)", "type": "main", "index": 0 }]]
+    },
+    "Lun/Mie/Vie 09:00": {
+      "main": [[{ "node": "Guion (Claude)", "type": "main", "index": 0 }]]
+    },
+    "Guion (Claude)": {
+      "main": [[{ "node": "Voz (ElevenLabs)", "type": "main", "index": 0 }]]
+    },
+    "Voz (ElevenLabs)": {
+      "main": [[{ "node": "Imagenes (FLUX)", "type": "main", "index": 0 }]]
+    },
+    "Imagenes (FLUX)": {
+      "main": [[{ "node": "Edicion (FFmpeg+Whisper)", "type": "main", "index": 0 }]]
+    },
+    "Edicion (FFmpeg+Whisper)": {
+      "main": [[{ "node": "Publicacion (YouTube)", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
