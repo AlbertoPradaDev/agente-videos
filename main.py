@@ -57,6 +57,105 @@ def modulo_pendiente(estado_actual: str, modulo: str) -> bool:
         return True
 
 
+def _emitir_id(id_video: int):
+    """Imprime el ID en una línea parseable para que n8n lo capture y lo pase
+    entre nodos. Va por stdout directo (no logger) para que sea fácil de extraer."""
+    print(f"VIDEO_ID={id_video}", flush=True)
+
+
+def _ejecutar_etapa(etapa: str, id_video: int, tema: dict):
+    """Ejecuta exactamente UNA etapa del pipeline. Es la misma llamada,
+    al mismo módulo, con los mismos parámetros que el pipeline completo —
+    solo que aislada, para poder orquestarla nodo a nodo en n8n."""
+    if etapa == "guion":
+        from modules.guion import generar_guion_completo
+        generar_guion_completo(id_video, tema)
+        logger.success("✓ Guión completado")
+
+    elif etapa == "voz":
+        from modules.voz import generar_voces
+        generar_voces(id_video)
+        logger.success("✓ Voz completada")
+
+    elif etapa == "imagenes":
+        if not config.REPLICATE_API_TOKEN:
+            logger.warning("⚠️  REPLICATE_API_TOKEN no configurado — saltando imágenes")
+            return
+        from modules.imagenes import generar_imagenes
+        generar_imagenes(id_video)
+        logger.success("✓ Imágenes completadas")
+
+    elif etapa == "animacion":
+        if not config.REPLICATE_API_TOKEN:
+            logger.warning("⚠️  REPLICATE_API_TOKEN no configurado — saltando animación")
+            return
+        from modules.animacion import generar_animaciones
+        generar_animaciones(id_video)
+        logger.success("✓ Animaciones completadas")
+
+    elif etapa == "edicion":
+        from modules.edicion import ensamblar_video
+        ensamblar_video(id_video, tipo="todo")
+        logger.success("✓ Edición completada")
+
+    elif etapa == "publicacion":
+        from modules.publicacion import publicar_video
+        publicar_video(id_video, tipo="todo")
+        logger.success("✓ Publicación completada")
+
+    else:
+        raise ValueError(f"Etapa desconocida: {etapa}")
+
+
+def run_solo(etapa: str, id_video: int = None):
+    """
+    Ejecuta UNA sola etapa del pipeline (para orquestación con n8n).
+
+    - `etapa == "guion"` sin id: toma el siguiente tema pendiente de la hoja
+      'temas', lo marca 'en_proceso', genera el guión (crea la fila de
+      producción) y emite VIDEO_ID para los nodos siguientes.
+    - cualquier otra etapa: requiere --id (la fila de producción ya existe).
+    """
+    crear_directorios()
+
+    tema = None
+
+    if etapa == "guion" and not id_video:
+        tema = obtener_siguiente_tema()
+        if not tema:
+            logger.warning("No hay temas pendientes en Google Sheets. Añade temas a la hoja 'temas'.")
+            return
+        id_video = tema["id"]
+        actualizar_estado_tema(tema["_fila"], "en_proceso")
+        logger.info(f"▶  Etapa '{etapa}' — {tema.get('tema', tema.get('titulo_yt', id_video))} (ID: {id_video})")
+    else:
+        if not id_video:
+            logger.error(f"La etapa '{etapa}' requiere --id (la producción debe existir).")
+            raise SystemExit(2)
+        produccion = obtener_produccion(id_video)
+        if not produccion and etapa != "guion":
+            logger.error(f"No se encontró producción del video {id_video}. ¿Corrió ya la etapa 'guion'?")
+            raise SystemExit(2)
+        tema = {
+            "id":        id_video,
+            "tema":      (produccion or {}).get("titulo_yt", f"Video {id_video}"),
+            "categoria": "historia",
+        }
+        logger.info(f"▶  Etapa '{etapa}' (ID: {id_video})")
+
+    try:
+        _ejecutar_etapa(etapa, id_video, tema)
+        logger.success(f"🎉  Etapa '{etapa}' completada para video {id_video}")
+    except Exception as e:
+        logger.error(f"✗ Error en etapa '{etapa}' video {id_video}: {e}")
+        if tema and tema.get("_fila"):
+            actualizar_estado_tema(tema["_fila"], "error")
+        _emitir_id(id_video)
+        raise
+
+    _emitir_id(id_video)
+
+
 def run_pipeline(id_video: int = None, desde: str = None):
     """
     Ejecuta el pipeline completo o reanuda desde un módulo específico.
@@ -197,10 +296,14 @@ if __name__ == "__main__":
     parser.add_argument("--id",    type=int, help="ID del video a procesar o reanudar")
     parser.add_argument("--desde", type=str, choices=ORDEN_MODULOS,
                         help="Módulo desde el que reanudar: guion|voz|imagenes|animacion|edicion|publicacion")
+    parser.add_argument("--solo", type=str, choices=ORDEN_MODULOS,
+                        help="Ejecuta SOLO esa etapa (para orquestación nodo a nodo con n8n)")
     parser.add_argument("--test",  action="store_true", help="Verifica configuración y conexiones")
     args = parser.parse_args()
 
     if args.test:
         run_test()
+    elif args.solo:
+        run_solo(etapa=args.solo, id_video=args.id)
     else:
         run_pipeline(id_video=args.id, desde=args.desde)
