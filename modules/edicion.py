@@ -19,6 +19,8 @@ import random
 import subprocess
 import sys
 import argparse
+import difflib
+import unicodedata
 from pathlib import Path
 
 from loguru import logger
@@ -393,7 +395,8 @@ def crear_corto(id_video: int, numero_corto: int, datos_corto: dict) -> Path:
 
     # Generar subtítulos con Whisper (formato ASS con estilo embebido)
     ruta_ass = carpeta_temp / f"corto_{numero_corto}.ass"
-    _generar_subtitulos(ruta_audio, ruta_ass)
+    texto_corto = datos_corto.get("guion_corto", "")
+    _generar_subtitulos(ruta_audio, ruta_ass, texto=texto_corto)
 
     # Filtro de subtítulos: 'subtitles' con ASS ya tiene el estilo embebido, sin force_style
     ruta_ass_escaped = str(ruta_ass).replace(":", "\\:")
@@ -426,32 +429,164 @@ def crear_corto(id_video: int, numero_corto: int, datos_corto: dict) -> Path:
     return ruta_final
 
 
-def _generar_subtitulos(ruta_audio: Path, ruta_ass: Path):
-    """Genera subtítulos en formato ASS con estilo embebido usando Whisper."""
+_ASS_CABECERA = (
+    "[Script Info]\n"
+    "ScriptType: v4.00+\n"
+    "PlayResX: 1080\n"
+    "PlayResY: 1920\n\n"
+    "[V4+ Styles]\n"
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+    "Style: Default,Arial,52,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,4,2,5,60,60,960,1\n\n"
+    "[Events]\n"
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+)
+
+
+MAX_PALABRAS_SUB = 4  # palabras por bloque de subtítulo (estilo TikTok)
+
+
+def _norm_palabra(p: str) -> str:
+    """Normaliza una palabra para comparar: minúsculas, sin acentos ni puntuación."""
+    p = unicodedata.normalize("NFD", p)
+    p = "".join(c for c in p if unicodedata.category(c) != "Mn")  # quita acentos
+    return "".join(c for c in p.lower() if c.isalnum())
+
+
+def _palabras_con_tiempos_whisper(ruta_audio: Path) -> list:
+    """Transcribe con Whisper a nivel de PALABRA → timing real sincronizado con la voz."""
+    import whisper
+    modelo = whisper.load_model("small")
+    resultado = modelo.transcribe(str(ruta_audio), language="es", word_timestamps=True)
+    palabras = []
+    for seg in resultado.get("segments", []):
+        for w in seg.get("words", []):
+            txt = (w.get("word") or "").strip()
+            if txt:
+                palabras.append({"word": txt, "start": float(w["start"]), "end": float(w["end"])})
+    return palabras
+
+
+def _rellenar_huecos(tiempos: list, duracion: float):
+    """Interpola linealmente los tramos sin tiempo (None) usando los vecinos conocidos."""
+    n = len(tiempos)
+    i = 0
+    while i < n:
+        if tiempos[i] is not None:
+            i += 1
+            continue
+        j = i
+        while j < n and tiempos[j] is None:
+            j += 1
+        t_antes = tiempos[i - 1][1] if i > 0 and tiempos[i - 1] else 0.0
+        t_despues = tiempos[j][0] if j < n and tiempos[j] else duracion
+        t_despues = max(t_despues, t_antes)
+        cnt = j - i
+        paso = (t_despues - t_antes) / cnt if cnt else 0.0
+        for k in range(cnt):
+            tiempos[i + k] = (t_antes + k * paso, t_antes + (k + 1) * paso)
+        i = j
+
+
+def _alinear_tiempos(palabras_script: list, palabras_whisper: list, duracion: float) -> list:
+    """
+    Asigna a cada palabra del GUIÓN (ortografía correcta) el tiempo real de la
+    palabra equivalente transcrita por Whisper. Usa alineación de secuencias para
+    tolerar diferencias de transcripción e interpola los huecos.
+    Retorna lista de (t_ini, t_fin) por palabra del guión.
+    """
+    s_tokens = [_norm_palabra(p) for p in palabras_script]
+    w_tokens = [_norm_palabra(w["word"]) for w in palabras_whisper]
+    tiempos = [None] * len(palabras_script)
+
+    sm = difflib.SequenceMatcher(a=s_tokens, b=w_tokens, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            for k in range(i2 - i1):
+                w = palabras_whisper[j1 + k]
+                tiempos[i1 + k] = (w["start"], w["end"])
+        elif j2 > j1:
+            # Tramo sin coincidencia exacta: reparte el span Whisper [j1,j2)
+            # proporcionalmente entre las palabras del guión [i1,i2).
+            n = i2 - i1
+            if n <= 0:
+                continue
+            t0 = palabras_whisper[j1]["start"]
+            t1 = palabras_whisper[j2 - 1]["end"]
+            paso = (t1 - t0) / n
+            for k in range(n):
+                tiempos[i1 + k] = (t0 + k * paso, t0 + (k + 1) * paso)
+
+    _rellenar_huecos(tiempos, duracion)
+    return tiempos
+
+
+def _escribir_ass_bloques(bloques: list, ruta_ass: Path):
+    """Escribe los bloques [(t_ini, t_fin, texto)] a un archivo ASS, manteniendo el
+    subtítulo visible hasta que empieza el siguiente (sin parpadeos entre palabras)."""
+    with open(ruta_ass, "w", encoding="utf-8") as f:
+        f.write(_ASS_CABECERA)
+        for idx, (t_ini, t_fin, linea) in enumerate(bloques):
+            if idx + 1 < len(bloques):
+                t_fin = max(t_fin, bloques[idx + 1][0])  # extiende hasta el próximo bloque
+            if t_fin <= t_ini:
+                t_fin = t_ini + 0.4
+            f.write(f"Dialogue: 0,{_segundos_a_ass(t_ini)},{_segundos_a_ass(t_fin)},Default,,0,0,0,,{linea.upper()}\n")
+
+
+def _generar_subtitulos_alineado(texto: str, ruta_audio: Path, ruta_ass: Path):
+    """Subtítulos sincronizados: timing real de Whisper + ortografía del guión."""
+    duracion = obtener_duracion(ruta_audio)
+    palabras_script = texto.strip().split()
+    if not palabras_script:
+        return
+    palabras_whisper = _palabras_con_tiempos_whisper(ruta_audio)
+    if not palabras_whisper:
+        raise RuntimeError("Whisper no devolvió palabras con timestamps")
+    tiempos = _alinear_tiempos(palabras_script, palabras_whisper, duracion)
+
+    bloques = []
+    for i in range(0, len(palabras_script), MAX_PALABRAS_SUB):
+        palabras_bloque = palabras_script[i:i + MAX_PALABRAS_SUB]
+        t_bloque = [t for t in tiempos[i:i + MAX_PALABRAS_SUB] if t]
+        if not t_bloque:
+            continue
+        bloques.append((t_bloque[0][0], t_bloque[-1][1], " ".join(palabras_bloque)))
+    _escribir_ass_bloques(bloques, ruta_ass)
+
+
+def _generar_subtitulos_desde_texto(texto: str, ruta_audio: Path, ruta_ass: Path):
+    """Fallback: distribuye el guión UNIFORMEMENTE sobre la duración (sin sincronizar)."""
+    duracion = obtener_duracion(ruta_audio)
+    palabras = texto.strip().split()
+    bloques = [palabras[i:i+MAX_PALABRAS_SUB] for i in range(0, len(palabras), MAX_PALABRAS_SUB)]
+    if not bloques:
+        return
+    dur_bloque = duracion / len(bloques)
+    salida = [(j * dur_bloque, (j + 1) * dur_bloque, " ".join(b)) for j, b in enumerate(bloques)]
+    _escribir_ass_bloques(salida, ruta_ass)
+
+
+def _generar_subtitulos(ruta_audio: Path, ruta_ass: Path, texto: str = None):
+    """Genera subtítulos en formato ASS. Usa el texto del guión si está disponible; si no, Whisper."""
+    if texto and texto.strip():
+        try:
+            logger.info("Generando subtítulos sincronizados (Whisper word-timestamps + guión)...")
+            _generar_subtitulos_alineado(texto, ruta_audio, ruta_ass)
+            logger.info(f"✓ Subtítulos sincronizados: {ruta_ass.name}")
+            return
+        except Exception as e:
+            logger.warning(f"Alineación falló ({e}); usando distribución uniforme")
+            _generar_subtitulos_desde_texto(texto, ruta_audio, ruta_ass)
+            logger.info(f"✓ Subtítulos (uniforme) generados: {ruta_ass.name}")
+            return
     try:
         import whisper
         logger.info("Generando subtítulos con Whisper...")
-        modelo = whisper.load_model("base")
+        modelo = whisper.load_model("small")
         resultado = modelo.transcribe(str(ruta_audio), language="es")
 
-        # Cabecera ASS con estilo: texto blanco, negrita, centrado en pantalla
-        cabecera = (
-            "[Script Info]\n"
-            "ScriptType: v4.00+\n"
-            "PlayResX: 1080\n"
-            "PlayResY: 1920\n\n"
-            "[V4+ Styles]\n"
-            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-            # FontSize 36 — bien legible en móvil
-            # Alignment 5 = centro horizontal, centro vertical (mitad de pantalla)
-            # Outline 4, Shadow 2 para máxima legibilidad sobre cualquier imagen
-            "Style: Default,Arial,52,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,4,2,5,60,60,960,1\n\n"
-            "[Events]\n"
-            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
-        )
-
         with open(ruta_ass, "w", encoding="utf-8") as f:
-            f.write(cabecera)
+            f.write(_ASS_CABECERA)
             for segmento in resultado["segments"]:
                 texto = segmento["text"].strip()
                 if not texto:

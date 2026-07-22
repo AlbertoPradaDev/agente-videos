@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "alpramir",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd /Users/cex/Documents/Workspace/tools/alpramir && npm run dev"],
+      "port": 3000
+    }
+  ]
+}

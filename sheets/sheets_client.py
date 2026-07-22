@@ -49,7 +49,7 @@ def obtener_siguiente_tema() -> Optional[dict]:
     """
     try:
         sheet = get_spreadsheet().worksheet(config.SHEET_TEMAS)
-        registros = sheet.get_all_records()
+        registros = _registros(sheet)
 
         for i, fila in enumerate(registros, start=2):  # start=2 porque fila 1 es header
             if str(fila.get("estado", "")).strip().lower() == "pendiente":
@@ -98,7 +98,7 @@ def guardar_produccion(id_video: int, datos: dict):
     """
     try:
         sheet = get_spreadsheet().worksheet(config.SHEET_PRODUCCION)
-        registros = sheet.get_all_records()
+        registros = _registros(sheet)
 
         fila_existente = None
         for i, fila in enumerate(registros, start=2):
@@ -114,7 +114,7 @@ def guardar_produccion(id_video: int, datos: dict):
             logger.info(f"Video {id_video}: datos de producción actualizados")
         else:
             headers = sheet.row_values(1)
-            nueva_fila = [str(datos.get(h, "")) for h in headers]
+            nueva_fila = [str(datos.get(h.strip(), "")) for h in headers]
             sheet.append_row(nueva_fila, value_input_option="USER_ENTERED")
             logger.info(f"Video {id_video}: nueva fila de producción creada")
 
@@ -127,7 +127,7 @@ def obtener_produccion(id_video: int) -> Optional[dict]:
     """Lee los datos de producción de un video por su ID."""
     try:
         sheet = get_spreadsheet().worksheet(config.SHEET_PRODUCCION)
-        registros = sheet.get_all_records()
+        registros = _registros(sheet)
         for fila in registros:
             if str(fila.get("id")) == str(id_video):
                 return fila
@@ -148,7 +148,7 @@ def guardar_corto(id_video_padre: int, numero_corto: int, datos: dict):
     """
     try:
         sheet = get_spreadsheet().worksheet(config.SHEET_CORTOS)
-        registros = sheet.get_all_records()
+        registros = _registros(sheet)
 
         fila_existente = None
         for i, fila in enumerate(registros, start=2):
@@ -165,7 +165,7 @@ def guardar_corto(id_video_padre: int, numero_corto: int, datos: dict):
             _actualizar_fila(sheet, fila_existente, datos)
         else:
             headers = sheet.row_values(1)
-            nueva_fila = [str(datos.get(h, "")) for h in headers]
+            nueva_fila = [str(datos.get(h.strip(), "")) for h in headers]
             sheet.append_row(nueva_fila, value_input_option="USER_ENTERED")
 
         logger.info(f"Corto {numero_corto} del video {id_video_padre} guardado")
@@ -179,7 +179,7 @@ def obtener_cortos(id_video_padre: int) -> list[dict]:
     """Retorna los 3 cortos de un video padre."""
     try:
         sheet = get_spreadsheet().worksheet(config.SHEET_CORTOS)
-        registros = sheet.get_all_records()
+        registros = _registros(sheet)
         return [f for f in registros if str(f.get("id_video_padre")) == str(id_video_padre)]
     except Exception as e:
         logger.error(f"Error leyendo cortos del video {id_video_padre}: {e}")
@@ -189,6 +189,15 @@ def obtener_cortos(id_video_padre: int) -> list[dict]:
 # ============================================================
 # UTILIDADES INTERNAS
 # ============================================================
+
+def _registros(sheet: gspread.Worksheet) -> list[dict]:
+    """get_all_records con las claves (headers) normalizadas: sin espacios al inicio/final.
+
+    Evita que un header descuidado como 'descripcion_yt ' rompa los accesos
+    posteriores tipo fila.get('descripcion_yt').
+    """
+    return [{k.strip(): v for k, v in fila.items()} for fila in sheet.get_all_records()]
+
 
 def _get_col_index(sheet: gspread.Worksheet, nombre_col: str) -> int:
     """Retorna el índice (1-based) de una columna por su nombre en el header."""
@@ -200,8 +209,12 @@ def _get_col_index(sheet: gspread.Worksheet, nombre_col: str) -> int:
 
 
 def _actualizar_fila(sheet: gspread.Worksheet, numero_fila: int, datos: dict):
-    """Actualiza campos específicos de una fila existente."""
-    headers = sheet.row_values(1)
+    """Actualiza campos específicos de una fila existente.
+
+    El match de columnas ignora espacios al inicio/final del header, así un
+    header como 'descripcion_yt ' (con espacio) no descarta silenciosamente el dato.
+    """
+    headers = [h.strip() for h in sheet.row_values(1)]
     for col_nombre, valor in datos.items():
         if col_nombre in headers:
             col_idx = headers.index(col_nombre) + 1

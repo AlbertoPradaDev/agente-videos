@@ -119,19 +119,20 @@ def obtener_servicio_youtube():
 def calcular_fecha_publicacion(dias_offset: int = 0, hora: str = None) -> str:
     """
     Calcula la fecha/hora de publicación en formato ISO 8601 UTC.
-    Por defecto publica hoy a las 18:30 hora de Madrid (17:30 UTC en verano).
+    La hora base se interpreta en la zona horaria config.PUBLISH_TIMEZONE.
+    dias_offset cuenta días a partir de HOY (1 = mañana).
     """
     from zoneinfo import ZoneInfo
 
-    tz_madrid = ZoneInfo("Europe/Madrid")
+    tz_local = ZoneInfo(config.PUBLISH_TIMEZONE)
     hora_pub = hora or config.PUBLISH_TIME  # "18:30"
     h, m = map(int, hora_pub.split(":"))
 
-    ahora = datetime.now(tz_madrid)
+    ahora = datetime.now(tz_local)
     fecha_pub = ahora.replace(hour=h, minute=m, second=0, microsecond=0)
     fecha_pub += timedelta(days=dias_offset)
 
-    # Si la hora ya pasó hoy, publicar mañana
+    # Si la hora ya pasó hoy, publicar mañana (solo cuando no hay offset)
     if fecha_pub <= ahora and dias_offset == 0:
         fecha_pub += timedelta(days=1)
 
@@ -146,7 +147,7 @@ def calcular_fecha_publicacion(dias_offset: int = 0, hora: str = None) -> str:
 
 def subir_video_largo(id_video: int, youtube) -> str:
     """
-    Sube el video largo al canal y lo programa para las 18:30.
+    Sube el video largo al canal y lo programa para el día siguiente a las 13:00.
     Retorna el ID del video en YouTube.
     """
     produccion = obtener_produccion(id_video)
@@ -162,7 +163,8 @@ def subir_video_largo(id_video: int, youtube) -> str:
     tags_str  = produccion.get("tags_yt", "")
     tags      = [t.strip() for t in tags_str.split(",") if t.strip()]
 
-    fecha_pub = calcular_fecha_publicacion(dias_offset=0)
+    # Video largo: día siguiente a las 13:00
+    fecha_pub = calcular_fecha_publicacion(dias_offset=1, hora="13:00")
     logger.info(f"Subiendo video largo: {titulo}")
     logger.info(f"Programado para: {fecha_pub}")
 
@@ -213,9 +215,20 @@ def subir_video_largo(id_video: int, youtube) -> str:
 # SUBIR CORTOS
 # ============================================================
 
+# Programación de cortos relativa al día de ejecución (día siguiente = mismo día del video largo):
+#   Corto 1 → día+1 a las 19:30 (tarde del día del video largo)
+#   Corto 2 → día+2 a las 13:00
+#   Corto 3 → día+3 a las 13:00
+PROGRAMACION_CORTOS = {
+    1: (1, "19:30"),
+    2: (2, "13:00"),
+    3: (3, "13:00"),
+}
+
+
 def subir_cortos(id_video: int, youtube):
     """
-    Sube los 3 cortos al canal programados con 2 horas de diferencia.
+    Sube los 3 cortos al canal escalonados en días siguientes (ver PROGRAMACION_CORTOS).
     """
     cortos = obtener_cortos(id_video)
     if not cortos:
@@ -235,10 +248,8 @@ def subir_cortos(id_video: int, youtube):
         hashtags    = corto.get("hashtags", "")
         descripcion_completa = f"{descripcion}\n\n{hashtags}"
 
-        # Cortos: publicar con 2h de diferencia (corto 1 a las 12:00, 2 a las 14:00, 3 a las 16:00)
-        horas_base = [12, 14, 16]
-        hora_pub_str = f"{horas_base[(numero-1) % 3]:02d}:00"
-        fecha_pub = calcular_fecha_publicacion(dias_offset=0, hora=hora_pub_str)
+        dias_offset, hora_pub_str = PROGRAMACION_CORTOS.get(numero, (numero, "13:00"))
+        fecha_pub = calcular_fecha_publicacion(dias_offset=dias_offset, hora=hora_pub_str)
 
         logger.info(f"Subiendo corto {numero}: {titulo}")
         logger.info(f"Programado para: {fecha_pub}")
