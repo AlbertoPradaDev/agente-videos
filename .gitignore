@@ -3,6 +3,9 @@
 credentials.json
 token.json
 *.pickle
+# también las copias con sufijo (*.pickle no coge youtube_token.pickle.bak_...)
+*.pickle.*
+*token*.bak*
 
 # Salida generada (archivos pesados)
 output/
